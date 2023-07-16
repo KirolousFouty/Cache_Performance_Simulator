@@ -20,9 +20,9 @@ int NumberOfWays = 4;                // in units // variable belongs to {1,2,4,8
 int numLines = CACHE_SIZE / LineSize;
 int numSets = numLines / NumberOfWays;
 
-int numLineOffsetBits = log2(LineSize);
-int numIndexBits = log2(numSets);
-int numTagBits = 32 - numLineOffsetBits - numIndexBits;
+int numLineOffsetBits;
+int numIndexBits;
+int numTagBits;
 
 unsigned int LineOffset;
 unsigned int Index;
@@ -46,6 +46,13 @@ enum cacheResType
 
 void calc(unsigned int addr)
 {
+    numLines = CACHE_SIZE / LineSize;
+    numSets = numLines / NumberOfWays;
+
+    numLineOffsetBits = log2(LineSize);
+    numIndexBits = log2(numSets);
+    numTagBits = 32 - numLineOffsetBits - numIndexBits;
+
     LineOffset = 0;
     unsigned int temp = 0b1;
     for (int i = 0; i < numLineOffsetBits; i++)
@@ -113,39 +120,43 @@ unsigned int memGen6()
     return (addr += 32) % (64 * 4 * 1024);
 }
 
+// Set Associative Cache Simulator
+cacheResType cacheSimSA(unsigned int addr)
+{
+    for (int i = 0; i < numLines; i++)
+        if (cacheSA[Index][i].valid && cacheSA[Index][i].Tag == Tag)
+            return HIT;
+
+    cacheSA[Index][firstIn[Index]].valid = 1;
+    cacheSA[Index][firstIn[Index]].Tag = Tag;
+    firstIn[Index]++;
+    firstIn[Index] %= numLines;
+
+    return MISS;
+}
+
 // Direct Mapped Cache Simulator
 cacheResType cacheSimDM(unsigned int addr)
 {
-    // This function accepts the memory address for the memory transaction and
-    // returns whether it caused a cache miss or a cache hit
-
-    // The current implementation assumes there is no cache; so, every transaction is a miss
-    return MISS;
+    NumberOfWays = 1; // debugging: this part needs to enforce the special case that makes the SA cache a DM cache. Reviewing and testing are required.
+    calc(addr);
+    return cacheSimSA(addr);
 }
 
 // Fully Associative Cache Simulator
 cacheResType cacheSimFA(unsigned int addr)
 {
-    // This function accepts the memory address for the read and
-    // returns whether it caused a cache miss or a cache hit
-
-    // The current implementation assumes there is no cache; so, every transaction is a miss
-    return MISS;
-}
-
-// Set Associative Cache Simulator
-cacheResType cacheSimSA(unsigned int addr)
-{
-    // This function accepts the memory address for the read and
-    // returns whether it caused a cache miss or a cache hit
-
-    // The current implementation assumes there is no cache; so, every transaction is a miss
-    return MISS;
+    numSets = 1; // debugging: this part needs to enforce the special case that makes the SA cache a FA cache. Reviewing, testing, removing redundancies are required.
+    NumberOfWays = numLines;
+    calc(addr);
+    numSets = 1;
+    NumberOfWays = numLines;
+    return cacheSimSA(addr);
 }
 
 char *msg[2] = {"Miss", "Hit"};
 
-#define NO_OF_Iterations 10000 // CHange to 1,000,000
+#define NO_OF_Iterations 1000000 // CHange to 1,000,000
 
 int main()
 {
@@ -163,26 +174,26 @@ int main()
     unsigned int addr;
     cout << "Set Associative Cache Simulator\n";
 
-    cout << numTagBits << " " << numIndexBits << " " << numLineOffsetBits << endl;
-
     for (int inst = 0; inst < NO_OF_Iterations; inst++)
     {
-        addr = memGen1();
-        // addr = memGen2();
-        // addr = memGen3();
-        // addr = memGen4();
-        // addr = memGen5();
-        // addr = memGen6();
+        // addr = memGen1(); // 93 hit ratio @ 1,000,000 addresses
+        // addr = memGen2(); // 99 hit ratio @ 1,000,000 addresses
+        addr = memGen3(); // 5 hit ratio @ 1,000,000 addresses      // debugging: review the 5 hit ratio
+        // addr = memGen4(); // 99 hit ratio @ 1,000,000 addresses
+        // addr = memGen5(); // 99 hit ratio @ 1,000,000 addresses
+        // addr = memGen6(); // 99 hit ratio @ 1,000,000 addresses
 
         calc(addr);
+        if (inst == 0) // debugging: change this condition to view the number of bits of the desired address (tracing)
+            cout << "#_Tag_bits=" << numTagBits << "    #_Index_bits=" << numIndexBits << "    #_Offset_bits=" << numLineOffsetBits << endl;
 
-        // cout << bitset<32>(addr) << "   " << hex << (Tag) << " " << (Index) << " " << (LineOffset) << endl;
-        output << bitset<32>(addr) << "   " << hex << (Tag) << " " << (Index) << " " << (LineOffset) << endl;
+        // output << bitset<32>(addr) << "   " << hex << (Tag) << " " << (Index) << " " << (LineOffset) << endl; // debugging: (tracing)
 
         r = cacheSimSA(addr);
+        // r = cacheSimDM(addr);
+        // r = cacheSimFA(addr);
         if (r == HIT)
             hit++;
-        // cout << "0x" << setfill('0') << setw(8) << hex << addr << " (" << msg[r] << ")\n";
         output << "0x" << setfill('0') << setw(8) << hex << addr << " (" << msg[r] << ")\n";
     }
     cout << "Hit ratio = " << (100 * hit / NO_OF_Iterations) << endl;
